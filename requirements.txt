@@ -1,0 +1,4 @@
+## !! Could not determine repository location
+AutoNotes==1.0
+click==6.7
+MarkupSafe==1.0
