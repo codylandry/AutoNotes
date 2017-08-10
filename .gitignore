@@ -1,6 +1,5 @@
 # Created by .ignore support plugin (hsz.mobi)
 venv/
-dev/
 .DS_Store
 .idea/
 AutoNotes.egg-info/
