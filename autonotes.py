@@ -9,15 +9,23 @@ TEMPLATE_FILE_NAME = 'template.md'
 ARCHIVE_FILE_NAME_FORMAT = "archive-%Y-%m-%d-%H%M.md"
 
 @click.group()
-def cli():
+@click.option('--path', default=os.getcwd())
+@click.pass_context
+def cli(context, path):
 	"""
 	This script allows you to automatically generate and manage tasks/notes
 
 	Arguments:
 		- directory: defaults to current working directory
 	"""
-	pass
+	context.obj = dict(path=path)
 
+
+def replace_section_text(text, section_data, section_text):
+	"""Replace a 'section_name' of 'text' with 'section_text'"""
+	start = text.index(section_data['before']) + len(section_data['before'])
+	end = text.index(section_data['after'])
+	return text[:start] + section_text + text[end:]
 
 def decompose_template(template):
 	"""
@@ -86,9 +94,10 @@ def check_path(path):
 		return False
 
 @click.command()
-@click.argument('path', default=os.getcwd())
-def init(path):
+@click.pass_context
+def init(ctx):
 	"""Creates Required Files"""
+	path = ctx.obj['path']
 	if is_initialized(path):
 		click.secho(path + ' already initialized!\n', fg='green')
 		return
@@ -115,9 +124,10 @@ def init(path):
 	click.secho('Success!\n', fg='green')
 
 @click.command()
-@click.argument('path', default=os.getcwd())
-def create_template(path):
+@click.pass_context
+def create_template(ctx):
 	"""Recreates an empty template file"""
+	path = ctx.obj['path']
 	if not check_path(path):
 		return
 
@@ -134,9 +144,10 @@ def create_template(path):
 
 
 @click.command()
-@click.argument('path', default=os.getcwd())
-def create_today(path):
+@click.pass_context
+def create_today(ctx):
 	"""Recreates an empty today note file"""
+	path = ctx.obj['path']
 	if not check_path(path):
 		return
 
@@ -162,10 +173,11 @@ def is_checked(line):
 	return any([line.find(match) != -1 for match in matches])
 
 @click.command()
-@click.argument('path', default=os.getcwd())
-def rotate(path):
+@click.pass_context
+def rotate(ctx):
 	"""Copy today file to an archive file, clear today file, copy over unchecked items from sections to copy"""
 	# get file paths
+	path = ctx.obj['path']
 	today_file_path = os.path.join(path, TODAY_FILE_NAME)
 	template_file_path = os.path.join(path, TEMPLATE_FILE_NAME)
 
@@ -195,34 +207,37 @@ def rotate(path):
 
 	# copy over lines from current today file to new
 	for section_name, section_data in sections_to_copy.items():
-		start = fresh_today_text.index(section_data['before']) + len(section_data['before'])
-		end = fresh_today_text.index(section_data['after'])
 		lines_to_copy = '\n'.join([line for line in section_data['text'].split('\n') if not is_checked(line)])
-		fresh_today_text = fresh_today_text[:start] + lines_to_copy + fresh_today_text[end:]
+		fresh_today_text = replace_section_text(fresh_today_text, section_data, lines_to_copy)
 
 	# overwrite the today file with the new data
 	with open(today_file_path, 'w') as today_file:
 		today_file.write(fresh_today_text)
 
 @click.command()
-@click.option('--path', default=os.getcwd(), help='Notes directory')
 @click.option('--checkbox/--no-checkbox', default=False, help="Add a checkbox to the line")
 @click.option('--checked/--not-checked', default=False, help='Check the checkbox if --checkbox set')
 @click.option('--section', type=str, help="Specify the section the line will be added to.  (Default = end of file)")
 @click.argument('item_text', type=str)
-def add_item(path, checkbox, checked, section, item_text):
+@click.pass_context
+def add_item(ctx, checkbox, checked, section, item_text):
 	"""
 	Adds item to section or end of today file. Useful for hooks (ex. git post-commit hook) where you want to add a line
 	to a today file section programmatically.
 	"""
+	path = ctx.obj['path']
 	# git post-commit hook notes
 	#   get most recent commit message: git log -1 --format='%s'
 
 	print path, checkbox, checked, section, item_text
-
 
 cli.add_command(init)
 cli.add_command(create_template)
 cli.add_command(create_today)
 cli.add_command(rotate)
 cli.add_command(add_item)
+
+
+if __name__ == '__main__':
+	cli()
+
