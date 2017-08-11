@@ -49,6 +49,7 @@ def decompose_template(template):
 		sections[section_name] = dict(before=before, after=after, tag=tag, name=section_name)
 	return sections
 
+
 def remove_template_tags(text, template_sections):
 	"""
 	Takes a template and removes all the {{ }} tags
@@ -74,6 +75,29 @@ def decompose_notes_file(note_text, template_sections):
 		end = note_text.index(match_data['after'])
 		ret[section_name]['text'] = note_text[start:end]
 	return ret
+
+def get_template_sections(path):
+	"""Open the template at path and decompose it"""
+	# get file paths
+	template_file_path = os.path.join(path, TEMPLATE_FILE_NAME)
+
+	# get template text
+	with open(template_file_path, 'r') as template_file:
+		template_text = template_file.read()
+
+	return decompose_template(template_text)
+
+def get_notes_sections(path):
+	"""Open the template at path and decompose it"""
+	# get file paths
+	template_sections = get_template_sections(path)
+	today_file_path = os.path.join(path, TODAY_FILE_NAME)
+
+	# get template text
+	with open(today_file_path, 'r') as today_file:
+		today_text = today_file.read()
+
+	return decompose_notes_file(today_text, template_sections)
 
 def is_initialized(path):
 	"""
@@ -225,11 +249,34 @@ def add_item(ctx, checkbox, checked, section, item_text):
 	Adds item to section or end of today file. Useful for hooks (ex. git post-commit hook) where you want to add a line
 	to a today file section programmatically.
 	"""
-	path = ctx.obj['path']
 	# git post-commit hook notes
 	#   get most recent commit message: git log -1 --format='%s'
 
-	print path, checkbox, checked, section, item_text
+	# get file paths
+	path = ctx.obj['path']
+	sections = get_notes_sections(path)
+	section_data = sections[section]
+
+	new_item = item_text
+	if checkbox:
+		box = '[ ]'
+		if checked:
+			box = '[X]'
+		new_item = "- {} {}".format(box, new_item)
+
+	new_section_text = "{}\n{}".format(section_data['text'], new_item)
+
+	today_file_path = os.path.join(path, TODAY_FILE_NAME)
+	with open(today_file_path, 'r') as today_file:
+		today_text = today_file.read()
+
+	today_text = replace_section_text(today_text, section_data, new_section_text)
+
+	with open(today_file_path, 'w') as today_file:
+		today_file.write(today_text)
+
+
+
 
 cli.add_command(init)
 cli.add_command(create_template)
