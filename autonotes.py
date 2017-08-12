@@ -1,6 +1,6 @@
 from datetime import datetime
 import sys
-from functools import wraps
+import functools
 from utils import *
 
 
@@ -185,6 +185,7 @@ def add_item(ctx, checkbox, checked, section, item_text):
 	with open(today_file_path, 'w') as today_file:
 		today_file.write(today_text)
 
+hook_callbacks = []
 
 @click.command()
 @click.option('--install', is_flag=True, default=False, help="Install git post-commit hook script")
@@ -200,20 +201,18 @@ def git_hook(ctx, install, trigger):
 		scripts_file_path = os.path.join(directory, 'scripts.py')
 		try:
 			scripts = import_(scripts_file_path)
-			print dir(scripts)
+			for hook in hook_callbacks:
+				hook()
 		except ImportError:
 			click.secho('scripts.py not in {}'.format(directory))
 			return
-
-
-import functools
-
 
 def hook(type='post-commit'):
 	def decorator(method):
 		@functools.wraps(method)
 		def f(*args, **kwargs):
 			method(*args, **kwargs)
+		hook_callbacks.append(f)
 		return f
 	return decorator
 
