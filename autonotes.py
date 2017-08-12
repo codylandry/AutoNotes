@@ -3,22 +3,37 @@ import re
 from collections import OrderedDict
 import os
 from datetime import datetime
+import sys
+import git
 
 TODAY_FILE_NAME = 'today.md'
 TEMPLATE_FILE_NAME = 'template.md'
 ARCHIVE_FILE_NAME_FORMAT = "archive-%Y-%m-%d-%H%M.md"
 
+
 @click.group()
-@click.option('--path', default=os.getcwd())
+@click.option('--directory',
+              default=os.getcwd(),
+              type=click.Path(exists=True, dir_okay=True, file_okay=False, resolve_path=True))
 @click.pass_context
-def cli(context, path):
+def cli(context, directory):
 	"""
 	This script allows you to automatically generate and manage tasks/notes
 
 	Arguments:
 		- directory: defaults to current working directory
 	"""
-	context.obj = dict(path=path)
+	if not is_initialized(directory) and not context.invoked_subcommand == 'init':
+		click.secho('Warning: {} is not initialized, run => autonotes init'.format(directory), fg='red')
+		sys.exit(1)
+
+	context.obj = dict(directory=directory)
+
+
+def get_git_root_path(path):
+	"""returns the root git repo path"""
+	git_repo = git.Repo(path, search_parent_directories=True)
+	return git_repo.git.rev_parse("--show-toplevel")
 
 
 def replace_section_text(text, section_data, section_text):
@@ -27,12 +42,13 @@ def replace_section_text(text, section_data, section_text):
 	end = text.index(section_data['after'])
 	return text[:start] + section_text + text[end:]
 
+
 def decompose_template(template):
 	"""
 	Parses template text and returns a dictionary
 	key: {
-		before: text occuring before the {{ section_name }}
-		after: text occuring after the {{ section_name }}
+		before: text occurring before the {{ section_name }}
+		after: text occurring after the {{ section_name }}
 	}
 	:param template: string
 	:return: OrderedDict
@@ -62,6 +78,7 @@ def remove_template_tags(text, template_sections):
 		out = out.replace(tag, '')
 	return out
 
+
 def decompose_notes_file(note_text, template_sections):
 	"""
 	Takes note text and uses template sections to get text of each section
@@ -76,10 +93,11 @@ def decompose_notes_file(note_text, template_sections):
 		ret[section_name]['text'] = note_text[start:end]
 	return ret
 
-def get_template_sections(path):
+
+def get_template_sections(directory):
 	"""Open the template at path and decompose it"""
 	# get file paths
-	template_file_path = os.path.join(path, TEMPLATE_FILE_NAME)
+	template_file_path = os.path.join(directory, TEMPLATE_FILE_NAME)
 
 	# get template text
 	with open(template_file_path, 'r') as template_file:
@@ -87,11 +105,12 @@ def get_template_sections(path):
 
 	return decompose_template(template_text)
 
-def get_notes_sections(path):
+
+def get_notes_sections(directory):
 	"""Open the template at path and decompose it"""
 	# get file paths
-	template_sections = get_template_sections(path)
-	today_file_path = os.path.join(path, TODAY_FILE_NAME)
+	template_sections = get_template_sections(directory)
+	today_file_path = os.path.join(directory, TODAY_FILE_NAME)
 
 	# get template text
 	with open(today_file_path, 'r') as today_file:
@@ -99,46 +118,49 @@ def get_notes_sections(path):
 
 	return decompose_notes_file(today_text, template_sections)
 
-def is_initialized(path):
+
+def is_initialized(directory):
 	"""
 	Does path have all the right files
-	:param path: directory path
+	:param directory: directory path
 	:return:
 	"""
-	today_path = os.path.join(path, TODAY_FILE_NAME)
-	template_path = os.path.join(path, TEMPLATE_FILE_NAME)
+	today_path = os.path.join(directory, TODAY_FILE_NAME)
+	template_path = os.path.join(directory, TEMPLATE_FILE_NAME)
 	return (os.path.exists(today_path) and os.path.exists(template_path))
 
-def check_path(path):
+
+def check_path(directory):
 	"""Is path a valid existing directory"""
-	if os.path.isdir(path):
+	if os.path.isdir(directory):
 		return True
 	else:
-		click.secho('{} is not a directory!'.format(path), fg='red')
+		click.secho('{} is not a directory!'.format(directory), fg='red')
 		return False
+
 
 @click.command()
 @click.pass_context
 def init(ctx):
 	"""Creates Required Files"""
-	path = ctx.obj['path']
-	if is_initialized(path):
-		click.secho(path + ' already initialized!\n', fg='green')
+	directory = ctx.obj['directory']
+	if is_initialized(directory):
+		click.secho(directory + ' already initialized!\n', fg='green')
 		return
 
-	if not check_path(path):
+	if not check_path(directory):
 		return
 
 	click.secho('\nCREATING REQUIRED FILES...', fg='blue')
 
-	template_path = os.path.join(path, TEMPLATE_FILE_NAME)
+	template_path = os.path.join(directory, TEMPLATE_FILE_NAME)
 	if os.path.exists(template_path):
 		click.secho('\t- {} already exists!'.format(template_path), fg='yellow')
 	else:
 		open(template_path, 'w+')
 		click.echo('\t- {}'.format(template_path))
 
-	today_path = os.path.join(path, TODAY_FILE_NAME)
+	today_path = os.path.join(directory, TODAY_FILE_NAME)
 	if os.path.exists(today_path):
 		click.secho('\t- {} already exists!'.format(today_path), fg='yellow')
 	else:
@@ -147,15 +169,16 @@ def init(ctx):
 
 	click.secho('Success!\n', fg='green')
 
+
 @click.command()
 @click.pass_context
 def create_template(ctx):
 	"""Recreates an empty template file"""
-	path = ctx.obj['path']
-	if not check_path(path):
+	directory = ctx.obj['directory']
+	if not check_path(directory):
 		return
 
-	filepath = os.path.join(path, TEMPLATE_FILE_NAME)
+	filepath = os.path.join(directory, TEMPLATE_FILE_NAME)
 	if os.path.exists(filepath):
 		click.secho(filepath + ' already exists!\n', fg='yellow')
 		return
@@ -171,11 +194,11 @@ def create_template(ctx):
 @click.pass_context
 def create_today(ctx):
 	"""Recreates an empty today note file"""
-	path = ctx.obj['path']
-	if not check_path(path):
+	directory = ctx.obj['directory']
+	if not check_path(directory):
 		return
 
-	filepath = os.path.join(path, TODAY_FILE_NAME)
+	filepath = os.path.join(directory, TODAY_FILE_NAME)
 	if os.path.exists(filepath):
 		click.secho(filepath + ' already exists!\n', fg='yellow')
 		return
@@ -186,9 +209,11 @@ def create_today(ctx):
 	click.echo('\t- {}'.format(filepath))
 	click.secho('Success!\n', fg='green')
 
+
 def is_checkbox_line(line):
 	matches = ['[ ]', '[]', '[X]', '[x]']
 	return any([line.find(match) != -1 for match in matches])
+
 
 def is_checked(line):
 	if not is_checkbox_line(line):
@@ -196,14 +221,15 @@ def is_checked(line):
 	matches = ['[x]', '[X]']
 	return any([line.find(match) != -1 for match in matches])
 
+
 @click.command()
 @click.pass_context
 def rotate(ctx):
 	"""Copy today file to an archive file, clear today file, copy over unchecked items from sections to copy"""
 	# get file paths
-	path = ctx.obj['path']
-	today_file_path = os.path.join(path, TODAY_FILE_NAME)
-	template_file_path = os.path.join(path, TEMPLATE_FILE_NAME)
+	directory = ctx.obj['directory']
+	today_file_path = os.path.join(directory, TODAY_FILE_NAME)
+	template_file_path = os.path.join(directory, TEMPLATE_FILE_NAME)
 
 	# get template text
 	with open(template_file_path, 'r') as template_file:
@@ -221,7 +247,7 @@ def rotate(ctx):
 	fresh_today_text = remove_template_tags(template_text, template_sections)
 
 	# create an archive file with the datetime in the filename
-	archive_file_name = os.path.join(path, datetime.now().strftime(ARCHIVE_FILE_NAME_FORMAT))
+	archive_file_name = os.path.join(directory, datetime.now().strftime(ARCHIVE_FILE_NAME_FORMAT))
 	with open(archive_file_name, 'w+') as archive_file:
 		archive_file.write(today_file_text)
 
@@ -238,6 +264,7 @@ def rotate(ctx):
 	with open(today_file_path, 'w') as today_file:
 		today_file.write(fresh_today_text)
 
+
 @click.command()
 @click.option('--checkbox/--no-checkbox', default=False, help="Add a checkbox to the line")
 @click.option('--checked/--not-checked', default=False, help='Check the checkbox if --checkbox set')
@@ -253,8 +280,8 @@ def add_item(ctx, checkbox, checked, section, item_text):
 	#   get most recent commit message: git log -1 --format='%s'
 
 	# get file paths
-	path = ctx.obj['path']
-	sections = get_notes_sections(path)
+	directory = ctx.obj['directory']
+	sections = get_notes_sections(directory)
 	section_data = sections[section]
 
 	new_item = item_text
@@ -266,7 +293,7 @@ def add_item(ctx, checkbox, checked, section, item_text):
 
 	new_section_text = "{}\n{}".format(section_data['text'], new_item)
 
-	today_file_path = os.path.join(path, TODAY_FILE_NAME)
+	today_file_path = os.path.join(directory, TODAY_FILE_NAME)
 	with open(today_file_path, 'r') as today_file:
 		today_text = today_file.read()
 
@@ -276,6 +303,42 @@ def add_item(ctx, checkbox, checked, section, item_text):
 		today_file.write(today_text)
 
 
+def touchopen(filename, *args, **kwargs):
+	open(filename, "a").close()  # "touch" file
+	return open(filename, *args, **kwargs)
+
+
+def install_git_post_commit_hook(directory):
+	git_root = get_git_root_path(directory)
+	hooks_directory = os.path.join(git_root, '.git', 'hooks')
+	hook = "autonotes --directory={} git_hook --trigger".format(directory)
+	hook_file_path = os.path.join(hooks_directory, 'post-commit')
+
+	with touchopen(hook_file_path, 'a+') as hook_file:
+		hook_file_text = hook_file.read()
+		if hook in hook_file_text:
+			click.secho('git post-commit hook already installed at: {}'.format(hook_file_path), fg='yellow')
+			return
+		else:
+			hook_file_text += '\n' + hook
+			hook_file.seek(0)
+			hook_file.write(hook_file_text)
+
+	click.secho('Git post-commit hook installed for {}'.format(git_root), fg='green')
+
+
+@click.command()
+@click.option('--install', is_flag=True, default=False, help="Install git post-commit hook script")
+@click.option('--trigger', is_flag=True, default=False, help="Fires registered post-commit callbacks")
+@click.pass_context
+def git_hook(ctx, install, trigger):
+	directory = ctx.obj['directory']
+
+	if install:
+		install_git_post_commit_hook(directory)
+
+	elif trigger:
+		print 'test'
 
 
 cli.add_command(init)
@@ -283,8 +346,7 @@ cli.add_command(create_template)
 cli.add_command(create_today)
 cli.add_command(rotate)
 cli.add_command(add_item)
-
+cli.add_command(git_hook)
 
 if __name__ == '__main__':
 	cli()
-
