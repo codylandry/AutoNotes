@@ -1,14 +1,7 @@
-import click
-import re
-from collections import OrderedDict
-import os
 from datetime import datetime
 import sys
-import git
-
-TODAY_FILE_NAME = 'today.md'
-TEMPLATE_FILE_NAME = 'template.md'
-ARCHIVE_FILE_NAME_FORMAT = "archive-%Y-%m-%d-%H%M.md"
+from functools import wraps
+from utils import *
 
 
 @click.group()
@@ -28,116 +21,6 @@ def cli(context, directory):
 		sys.exit(1)
 
 	context.obj = dict(directory=directory)
-
-
-def get_git_root_path(path):
-	"""returns the root git repo path"""
-	git_repo = git.Repo(path, search_parent_directories=True)
-	return git_repo.git.rev_parse("--show-toplevel")
-
-
-def replace_section_text(text, section_data, section_text):
-	"""Replace a 'section_name' of 'text' with 'section_text'"""
-	start = text.index(section_data['before']) + len(section_data['before'])
-	end = text.index(section_data['after'])
-	return text[:start] + section_text + text[end:]
-
-
-def decompose_template(template):
-	"""
-	Parses template text and returns a dictionary
-	key: {
-		before: text occurring before the {{ section_name }}
-		after: text occurring after the {{ section_name }}
-	}
-	:param template: string
-	:return: OrderedDict
-	"""
-	tokens = re.split(r'(\{\{.*\}\})', template)
-	sections = OrderedDict()
-	for i in range(0, len(tokens), 2):
-		if i > len(tokens) - 2:
-			break
-		before = tokens[i]
-		tag = tokens[i + 1]
-		after = tokens[i + 2]
-		section_name = re.search(r'(?<={{) *(\w*) *(?=}})', tag).group(0).strip()
-		sections[section_name] = dict(before=before, after=after, tag=tag, name=section_name)
-	return sections
-
-
-def remove_template_tags(text, template_sections):
-	"""
-	Takes a template and removes all the {{ }} tags
-	:param template: string
-	:return: string
-	"""
-	out = text
-	tags = [section['tag'] for section in template_sections.values()]
-	for tag in tags:
-		out = out.replace(tag, '')
-	return out
-
-
-def decompose_notes_file(note_text, template_sections):
-	"""
-	Takes note text and uses template sections to get text of each section
-	:param note_text: string
-	:param template_sections: OrderedDict (result of decompose_template)
-	:return: OrderedDict (copy of template_sections but with 'text' key)
-	"""
-	ret = OrderedDict(template_sections)
-	for section_name, match_data in template_sections.items():
-		start = note_text.index(match_data['before']) + len(match_data['before'])
-		end = note_text.index(match_data['after'])
-		ret[section_name]['text'] = note_text[start:end]
-	return ret
-
-
-def get_template_sections(directory):
-	"""Open the template at path and decompose it"""
-	# get file paths
-	template_file_path = os.path.join(directory, TEMPLATE_FILE_NAME)
-
-	# get template text
-	with open(template_file_path, 'r') as template_file:
-		template_text = template_file.read()
-
-	return decompose_template(template_text)
-
-
-def get_notes_sections(directory):
-	"""Open the template at path and decompose it"""
-	# get file paths
-	template_sections = get_template_sections(directory)
-	today_file_path = os.path.join(directory, TODAY_FILE_NAME)
-
-	# get template text
-	with open(today_file_path, 'r') as today_file:
-		today_text = today_file.read()
-
-	return decompose_notes_file(today_text, template_sections)
-
-
-def is_initialized(directory):
-	"""
-	Does path have all the right files
-	:param directory: directory path
-	:return:
-	"""
-	today_path = os.path.join(directory, TODAY_FILE_NAME)
-	template_path = os.path.join(directory, TEMPLATE_FILE_NAME)
-	return (os.path.exists(today_path) and os.path.exists(template_path))
-
-
-def check_path(directory):
-	"""Is path a valid existing directory"""
-	if os.path.isdir(directory):
-		return True
-	else:
-		click.secho('{} is not a directory!'.format(directory), fg='red')
-		return False
-
 
 @click.command()
 @click.pass_context
@@ -303,30 +186,6 @@ def add_item(ctx, checkbox, checked, section, item_text):
 		today_file.write(today_text)
 
 
-def touchopen(filename, *args, **kwargs):
-	open(filename, "a").close()  # "touch" file
-	return open(filename, *args, **kwargs)
-
-
-def install_git_post_commit_hook(directory):
-	git_root = get_git_root_path(directory)
-	hooks_directory = os.path.join(git_root, '.git', 'hooks')
-	hook = "autonotes --directory={} git_hook --trigger".format(directory)
-	hook_file_path = os.path.join(hooks_directory, 'post-commit')
-
-	with touchopen(hook_file_path, 'a+') as hook_file:
-		hook_file_text = hook_file.read()
-		if hook in hook_file_text:
-			click.secho('git post-commit hook already installed at: {}'.format(hook_file_path), fg='yellow')
-			return
-		else:
-			hook_file_text += '\n' + hook
-			hook_file.seek(0)
-			hook_file.write(hook_file_text)
-
-	click.secho('Git post-commit hook installed for {}'.format(git_root), fg='green')
-
-
 @click.command()
 @click.option('--install', is_flag=True, default=False, help="Install git post-commit hook script")
 @click.option('--trigger', is_flag=True, default=False, help="Fires registered post-commit callbacks")
@@ -338,7 +197,25 @@ def git_hook(ctx, install, trigger):
 		install_git_post_commit_hook(directory)
 
 	elif trigger:
-		print 'test'
+		scripts_file_path = os.path.join(directory, 'scripts.py')
+		try:
+			scripts = import_(scripts_file_path)
+			print dir(scripts)
+		except ImportError:
+			click.secho('scripts.py not in {}'.format(directory))
+			return
+
+
+import functools
+
+
+def hook(type='post-commit'):
+	def decorator(method):
+		@functools.wraps(method)
+		def f(*args, **kwargs):
+			method(*args, **kwargs)
+		return f
+	return decorator
 
 
 cli.add_command(init)
