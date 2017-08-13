@@ -2,6 +2,12 @@ from datetime import datetime
 import sys
 import functools
 from utils import *
+from core import Core
+TODAY_FILE_NAME = 'today.md'
+TEMPLATE_FILE_NAME = 'template.md'
+ARCHIVE_FILE_NAME_FORMAT = "archive-%Y-%m-%d-%H%M.md"
+
+
 
 
 @click.group()
@@ -16,38 +22,40 @@ def cli(context, directory):
 	Arguments:
 		- directory: defaults to current working directory
 	"""
-	if not is_initialized(directory) and not context.invoked_subcommand == 'init':
+	core = Core(directory)
+
+	if not core.is_initialized() and not context.invoked_subcommand == 'init':
 		click.secho('Warning: {} is not initialized, run => autonotes init'.format(directory), fg='red')
 		sys.exit(1)
 
-	context.obj = dict(directory=directory)
+	context.obj = dict(core=core)
 
 @click.command()
 @click.pass_context
 def init(ctx):
 	"""Creates Required Files"""
-	directory = ctx.obj['directory']
-	if is_initialized(directory):
-		click.secho(directory + ' already initialized!\n', fg='green')
+	core = ctx.obj['core']
+	if core.is_initialized():
+		click.secho(core.directory + ' already initialized!\n', fg='green')
 		return
 
-	if not check_path(directory):
+	if not check_path(core.directory):
 		return
 
 	click.secho('\nCREATING REQUIRED FILES...', fg='blue')
 
-	template_path = os.path.join(directory, TEMPLATE_FILE_NAME)
+	template_path = core.template_path
 	if os.path.exists(template_path):
 		click.secho('\t- {} already exists!'.format(template_path), fg='yellow')
 	else:
-		open(template_path, 'w+')
+		core.create_template_file()
 		click.echo('\t- {}'.format(template_path))
 
-	today_path = os.path.join(directory, TODAY_FILE_NAME)
+	today_path = core.current_file_path
 	if os.path.exists(today_path):
 		click.secho('\t- {} already exists!'.format(today_path), fg='yellow')
 	else:
-		open(today_path, 'w+')
+		core.create_current_file()
 		click.echo('\t- {}'.format(today_path))
 
 	click.secho('Success!\n', fg='green')
@@ -57,19 +65,15 @@ def init(ctx):
 @click.pass_context
 def create_template(ctx):
 	"""Recreates an empty template file"""
-	directory = ctx.obj['directory']
-	if not check_path(directory):
-		return
+	core = ctx.obj['core']
 
-	filepath = os.path.join(directory, TEMPLATE_FILE_NAME)
-	if os.path.exists(filepath):
-		click.secho(filepath + ' already exists!\n', fg='yellow')
+	if os.path.exists(core.template_path):
+		click.secho(core.template_path + ' already exists!\n', fg='yellow')
 		return
 
 	click.secho('\nCREATING TEMPLATE FILE...', fg='blue')
-	with open(filepath, 'w+') as f:
-		f.write('')
-	click.echo('\t- {}'.format(filepath))
+	core.create_template_file()
+	click.echo('\t- {}'.format(core.template_path))
 	click.secho('Success!\n', fg='green')
 
 
@@ -77,32 +81,16 @@ def create_template(ctx):
 @click.pass_context
 def create_today(ctx):
 	"""Recreates an empty today note file"""
-	directory = ctx.obj['directory']
-	if not check_path(directory):
-		return
+	core = ctx.obj['core']
 
-	filepath = os.path.join(directory, TODAY_FILE_NAME)
-	if os.path.exists(filepath):
-		click.secho(filepath + ' already exists!\n', fg='yellow')
+	if os.path.exists(core.current_file_path):
+		click.secho(core.current_file_path + ' already exists!\n', fg='yellow')
 		return
 
 	click.secho('\nCREATING TODAY FILE...', fg='blue')
-	with open(filepath, 'w+') as f:
-		f.write('')
-	click.echo('\t- {}'.format(filepath))
+	core.create_current_file()
+	click.echo('\t- {}'.format(core.current_file_path))
 	click.secho('Success!\n', fg='green')
-
-
-def is_checkbox_line(line):
-	matches = ['[ ]', '[]', '[X]', '[x]']
-	return any([line.find(match) != -1 for match in matches])
-
-
-def is_checked(line):
-	if not is_checkbox_line(line):
-		return False
-	matches = ['[x]', '[X]']
-	return any([line.find(match) != -1 for match in matches])
 
 
 @click.command()
@@ -110,48 +98,13 @@ def is_checked(line):
 def rotate(ctx):
 	"""Copy today file to an archive file, clear today file, copy over unchecked items from sections to copy"""
 	# get file paths
-	directory = ctx.obj['directory']
-	today_file_path = os.path.join(directory, TODAY_FILE_NAME)
-	template_file_path = os.path.join(directory, TEMPLATE_FILE_NAME)
-
-	# get template text
-	with open(template_file_path, 'r') as template_file:
-		template_text = template_file.read()
-
-	# get note text
-	with open(today_file_path, 'r') as today_file:
-		today_file_text = today_file.read()
-
-	# get template/note sections
-	template_sections = decompose_template(template_text)
-	note_sections = decompose_notes_file(today_file_text, template_sections)
-
-	# create a blank version of the template
-	fresh_today_text = remove_template_tags(template_text, template_sections)
-
-	# create an archive file with the datetime in the filename
-	archive_file_name = os.path.join(directory, datetime.now().strftime(ARCHIVE_FILE_NAME_FORMAT))
-	with open(archive_file_name, 'w+') as archive_file:
-		archive_file.write(today_file_text)
-
-	# whitelist sections for copying non-checked items to
-	section_names_to_copy = ['todo', 'notes', 'next']
-	sections_to_copy = {k: v for k, v in note_sections.items() if k in section_names_to_copy}
-
-	# copy over lines from current today file to new
-	for section_name, section_data in sections_to_copy.items():
-		lines_to_copy = '\n'.join([line for line in section_data['text'].split('\n') if not is_checked(line)])
-		fresh_today_text = replace_section_text(fresh_today_text, section_data, lines_to_copy)
-
-	# overwrite the today file with the new data
-	with open(today_file_path, 'w') as today_file:
-		today_file.write(fresh_today_text)
-
+	with ctx.obj['core'] as core:
+		core.rotate()
 
 @click.command()
 @click.option('--checkbox/--no-checkbox', default=False, help="Add a checkbox to the line")
 @click.option('--checked/--not-checked', default=False, help='Check the checkbox if --checkbox set')
-@click.option('--section', type=str, help="Specify the section the line will be added to.  (Default = end of file)")
+@click.option('--section', default='', type=str, help="Specify the section the line will be added to.  (Default = end of file)")
 @click.argument('item_text', type=str)
 @click.pass_context
 def add_item(ctx, checkbox, checked, section, item_text):
@@ -163,27 +116,9 @@ def add_item(ctx, checkbox, checked, section, item_text):
 	#   get most recent commit message: git log -1 --format='%s'
 
 	# get file paths
-	directory = ctx.obj['directory']
-	sections = get_notes_sections(directory)
-	section_data = sections[section]
 
-	new_item = item_text
-	if checkbox:
-		box = '[ ]'
-		if checked:
-			box = '[X]'
-		new_item = "- {} {}".format(box, new_item)
-
-	new_section_text = "{}\n{}".format(section_data['text'], new_item)
-
-	today_file_path = os.path.join(directory, TODAY_FILE_NAME)
-	with open(today_file_path, 'r') as today_file:
-		today_text = today_file.read()
-
-	today_text = replace_section_text(today_text, section_data, new_section_text)
-
-	with open(today_file_path, 'w') as today_file:
-		today_file.write(today_text)
+	with ctx.obj['core'] as core:
+		core.add_item(section, item_text, checkbox=checkbox, checked=checked)
 
 hook_callbacks = []
 

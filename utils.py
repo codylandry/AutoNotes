@@ -6,6 +6,29 @@ TODAY_FILE_NAME = 'today.md'
 TEMPLATE_FILE_NAME = 'template.md'
 ARCHIVE_FILE_NAME_FORMAT = "archive-%Y-%m-%d-%H%M.md"
 
+def read(file_):
+	file_.seek(0)
+	return file_.read()
+
+def write(file_, text):
+	file_.seek(0)
+	file_.truncate()
+	return file_.write(text)
+
+
+def is_checkbox_line(line):
+	matches = ['[ ]', '[]', '[X]', '[x]']
+	return any([line.find(match) != -1 for match in matches])
+
+
+def is_checked(line):
+	if not is_checkbox_line(line):
+		return False
+	matches = ['[x]', '[X]']
+	return any([line.find(match) != -1 for match in matches])
+
+
+
 def import_(filename):
 	"""imports a module by path and returns the module object"""
 	(path, name) = os.path.split(filename)
