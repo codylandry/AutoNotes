@@ -1,8 +1,8 @@
 import autonotes, git, os
+from core import Core
 
 @autonotes.hook()
-def test():
-	git_root = autonotes.get_git_root_path(os.getcwd())
-	repo = git.Repo(git_root)
-	latest_commit = next((c.message for c in repo.iter_commits()))
-	print latest_commit
+def test(repo):
+	with Core(os.getcwd()) as core:
+		latest_commit = next((c.message for c in repo.iter_commits()))
+		core.add_item('features', latest_commit, checkbox=True, checked=True)

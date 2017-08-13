@@ -135,9 +135,11 @@ def git_hook(ctx, install, trigger):
 		elif trigger:
 			scripts_file_path = os.path.join(core.directory, 'scripts.py')
 			try:
+				git_root = get_git_root_path(os.getcwd())
+				repo = git.Repo(git_root)
 				scripts = import_(scripts_file_path)
 				for hook in hook_callbacks:
-					hook()
+					hook(repo)
 			except ImportError:
 				click.secho('scripts.py not in {}'.format(core.directory))
 				return
