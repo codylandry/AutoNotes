@@ -4,7 +4,7 @@ import functools
 from utils import *
 from core import Core
 import traceback
-
+from collections import defaultdict
 TODAY_FILE_NAME = 'today.md'
 TEMPLATE_FILE_NAME = 'template.md'
 ARCHIVE_FILE_NAME_FORMAT = "archive-%Y-%m-%d-%H%M.md"
@@ -121,7 +121,7 @@ def add_item(ctx, checkbox, checked, section, item_text):
 
 # TODO: codylandry - REFACTOR HOOK API
 
-hook_callbacks = []
+hook_callbacks = defaultdict(list)
 
 @click.command()
 @click.option('--install', is_flag=True, default=False, help="Install git post-commit hook script")
@@ -139,7 +139,7 @@ def git_hook(ctx, install, trigger):
 				git_root = get_git_root_path(os.getcwd())
 				repo = git.Repo(git_root)
 				import_(scripts_file_path)
-				for hook in hook_callbacks:
+				for hook in hook_callbacks['git:post-commit']:
 					try:
 						hook(core, repo)
 					except Exception as e:
@@ -148,12 +148,12 @@ def git_hook(ctx, install, trigger):
 				click.secho('scripts.py not in {}'.format(core.directory))
 				return
 
-def hook(type='post-commit'):
+def hook(type_):
 	def decorator(method):
 		@functools.wraps(method)
 		def f(*args, **kwargs):
 			method(*args, **kwargs)
-		hook_callbacks.append(f)
+		hook_callbacks[type_].append(f)
 		return f
 	return decorator
 
