@@ -1,6 +1,6 @@
 import autonotes
 
-@autonotes.hook(type='git:post-commit')
+@autonotes.hook('git:post-commit')
 def log_commits(core, repo):
 	"""
 	This test hook will log commit messages to the appropriate section of the current
