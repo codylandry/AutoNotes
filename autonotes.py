@@ -129,21 +129,27 @@ hook_callbacks = defaultdict(list)
 @click.pass_context
 def git_hook(ctx, install, trigger):
 	with ctx.obj['core'] as core:
-
+		# install git pos-commit hook that calls this function with --trigger set
 		if install:
 			install_git_post_commit_hook(core.directory)
 
 		elif trigger:
-			scripts_file_path = os.path.join(core.directory, 'scripts.py')
 			try:
+				# get git repo object to pass to hook
 				git_root = get_git_root_path(os.getcwd())
 				repo = git.Repo(git_root)
+
+				# import hooks, which register themselves on evaluation in hook_callbacks
+				scripts_file_path = os.path.join(core.directory, 'scripts.py')
 				import_(scripts_file_path)
+
+				# call each hook passing the core and repo objects
 				for hook in hook_callbacks['git:post-commit']:
 					try:
 						hook(core, repo)
 					except Exception as e:
 						print traceback.format_exc()
+
 			except ImportError:
 				click.secho('scripts.py not in {}'.format(core.directory))
 				return
