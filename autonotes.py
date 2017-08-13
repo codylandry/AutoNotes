@@ -127,20 +127,20 @@ hook_callbacks = []
 @click.option('--trigger', is_flag=True, default=False, help="Fires registered post-commit callbacks")
 @click.pass_context
 def git_hook(ctx, install, trigger):
-	directory = ctx.obj['directory']
+	with ctx.obj['core'] as core:
 
-	if install:
-		install_git_post_commit_hook(directory)
+		if install:
+			install_git_post_commit_hook(core.directory)
 
-	elif trigger:
-		scripts_file_path = os.path.join(directory, 'scripts.py')
-		try:
-			scripts = import_(scripts_file_path)
-			for hook in hook_callbacks:
-				hook()
-		except ImportError:
-			click.secho('scripts.py not in {}'.format(directory))
-			return
+		elif trigger:
+			scripts_file_path = os.path.join(core.directory, 'scripts.py')
+			try:
+				scripts = import_(scripts_file_path)
+				for hook in hook_callbacks:
+					hook()
+			except ImportError:
+				click.secho('scripts.py not in {}'.format(core.directory))
+				return
 
 def hook(type='post-commit'):
 	def decorator(method):
