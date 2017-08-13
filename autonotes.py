@@ -3,12 +3,11 @@ import sys
 import functools
 from utils import *
 from core import Core
+import traceback
+
 TODAY_FILE_NAME = 'today.md'
 TEMPLATE_FILE_NAME = 'template.md'
 ARCHIVE_FILE_NAME_FORMAT = "archive-%Y-%m-%d-%H%M.md"
-
-
-
 
 @click.group()
 @click.option('--directory',
@@ -120,6 +119,8 @@ def add_item(ctx, checkbox, checked, section, item_text):
 	with ctx.obj['core'] as core:
 		core.add_item(section, item_text, checkbox=checkbox, checked=checked)
 
+# TODO: codylandry - REFACTOR HOOK API
+
 hook_callbacks = []
 
 @click.command()
@@ -137,9 +138,12 @@ def git_hook(ctx, install, trigger):
 			try:
 				git_root = get_git_root_path(os.getcwd())
 				repo = git.Repo(git_root)
-				scripts = import_(scripts_file_path)
+				import_(scripts_file_path)
 				for hook in hook_callbacks:
-					hook(repo)
+					try:
+						hook(core, repo)
+					except Exception as e:
+						print traceback.format_exc()
 			except ImportError:
 				click.secho('scripts.py not in {}'.format(core.directory))
 				return

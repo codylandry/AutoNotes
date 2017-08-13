@@ -11,6 +11,8 @@
 
 ### Features
 
+- [X] modifying test dev scripts
+
 
 ### Changes
 

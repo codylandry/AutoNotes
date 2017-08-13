@@ -1,9 +1,17 @@
-import autonotes, git, os
-from core import Core
+import autonotes
 
 @autonotes.hook()
-def test(repo):
-	this_dir = os.path.dirname(os.path.abspath(__file__))
-	with Core(this_dir) as core:
-		latest_commit = next((c.message for c in repo.iter_commits()))
-		core.add_item('features', latest_commit, checkbox=True, checked=True)
+def test(core, repo):
+	latest_commit = next((c.message for c in repo.iter_commits()))
+	commit_type_map = dict(
+		F='features',
+		C='changes',
+		D='defects'
+	)
+	section = None
+	for k, v in commit_type_map.items():
+		if k in latest_commit:
+			section = v
+			break
+
+	core.add_item(section, latest_commit, checkbox=True, checked=True)
