@@ -1,10 +1,33 @@
-import os, click, git, re, imp
+import os, click, git, re, imp, traceback
 from collections import OrderedDict
 
 
 TODAY_FILE_NAME = 'today.md'
 TEMPLATE_FILE_NAME = 'template.md'
 ARCHIVE_FILE_NAME_FORMAT = "archive-%Y-%m-%d-%H%M.md"
+
+def read(file_):
+	file_.seek(0)
+	return file_.read()
+
+def write(file_, text):
+	file_.seek(0)
+	file_.truncate()
+	return file_.write(text)
+
+
+def is_checkbox_line(line):
+	matches = ['[ ]', '[]', '[X]', '[x]']
+	return any([line.find(match) != -1 for match in matches])
+
+
+def is_checked(line):
+	if not is_checkbox_line(line):
+		return False
+	matches = ['[x]', '[X]']
+	return any([line.find(match) != -1 for match in matches])
+
+
 
 def import_(filename):
 	"""imports a module by path and returns the module object"""
@@ -130,7 +153,7 @@ def touchopen(filename, *args, **kwargs):
 def install_git_post_commit_hook(directory):
 	git_root = get_git_root_path(directory)
 	hooks_directory = os.path.join(git_root, '.git', 'hooks')
-	hook = "autonotes --directory={} git_hook --trigger".format(directory)
+	hook = "autonotes --directory={} trigger_hook git:post-commit".format(directory)
 	hook_file_path = os.path.join(hooks_directory, 'post-commit')
 
 	with touchopen(hook_file_path, 'a+') as hook_file:
@@ -145,3 +168,20 @@ def install_git_post_commit_hook(directory):
 
 	click.secho('Git post-commit hook installed for {}'.format(git_root), fg='green')
 
+def trigger_hooks(core, hook_type, context=None):
+	from autonotes import callbacks
+	with core:
+		try:
+			# import hooks, which register themselves on evaluation in hook_callbacks
+			scripts_file_path = os.path.join(core.directory, 'scripts.py')
+			import_(scripts_file_path)
+		except ImportError:
+			click.secho('scripts.py not in {}'.format(core.directory))
+			return
+
+		# call each hook passing the core and context
+		for hook in callbacks[hook_type]:
+			try:
+				hook(core, context)
+			except Exception as e:
+				print traceback.format_exc()
