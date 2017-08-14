@@ -1,8 +1,12 @@
 import sys
 from utils import *
-from core import Core
+from core import Core, RotateService
 import traceback
 from globals import callbacks
+
+def _maybe_fire_hook(ctx, hook_type, context=None):
+	if ctx.obj.get('fire_hooks', False):
+		trigger_hooks(ctx.obj['core'], hook_type, context)
 
 @click.group()
 @click.option('--directory',
@@ -18,12 +22,11 @@ def cli(context, directory, fire_hooks):
 		- directory: defaults to current working directory
 	"""
 	core = Core(directory)
-
 	if not core.is_initialized() and not context.invoked_subcommand == 'init':
 		click.secho('Warning: {} is not initialized, run => autonotes init'.format(directory), fg='red')
 		sys.exit(1)
-
 	context.obj = dict(core=core, fire_hooks=fire_hooks)
+	_maybe_fire_hook(context, 'hooks:pre-command')
 
 @click.command()
 @click.pass_context
@@ -93,8 +96,10 @@ def create_today(ctx):
 def rotate(ctx):
 	"""Copy today file to an archive file, clear today file, copy over unchecked items from sections to copy"""
 	# get file paths
+	_maybe_fire_hook(ctx, 'hooks:pre-rotate')
 	with ctx.obj['core'] as core:
 		core.rotate()
+	_maybe_fire_hook(ctx, 'hooks:post-rotate')
 
 @click.command()
 @click.option('--checkbox/--no-checkbox', default=False, help="Add a checkbox to the line")
@@ -107,13 +112,10 @@ def add_item(ctx, checkbox, checked, section, item_text):
 	Adds item to section or end of today file. Useful for hooks (ex. git post-commit hook) where you want to add a line
 	to a today file section programmatically.
 	"""
-	# git post-commit hook notes
-	#   get most recent commit message: git log -1 --format='%s'
-
-	# get file paths
-
+	_maybe_fire_hook(ctx, 'hooks:pre-add-item')
 	with ctx.obj['core'] as core:
 		core.add_item(section, item_text, checkbox=checkbox, checked=checked)
+	_maybe_fire_hook(ctx, 'hooks:post-add-item')
 
 @click.command()
 @click.option('--install/--uninstall', default=True, help="Install git post-commit hook script")
@@ -143,6 +145,14 @@ def trigger_hook(ctx, hook_type, context):
 
 	trigger_hooks(core, hook_type, context=context)
 
+@click.command()
+@click.argument('command', type=click.Choice(['start', 'stop']))
+@click.pass_context
+def service(ctx, command):
+	core = ctx.obj['core']
+	s = RotateService('autonotes', core)
+	getattr(s, command)()
+
 
 cli.add_command(init)
 cli.add_command(create_template)
@@ -151,3 +161,4 @@ cli.add_command(rotate)
 cli.add_command(add_item)
 cli.add_command(git_hooks)
 cli.add_command(trigger_hook)
+cli.add_command(service)

@@ -153,7 +153,7 @@ def touchopen(filename, *args, **kwargs):
 def install_git_post_commit_hook(directory):
 	git_root = get_git_root_path(directory)
 	hooks_directory = os.path.join(git_root, '.git', 'hooks')
-	hook = "autonotes --directory={} git_hook --trigger".format(directory)
+	hook = "autonotes --directory={} trigger_hook git:post-commit".format(directory)
 	hook_file_path = os.path.join(hooks_directory, 'post-commit')
 
 	with touchopen(hook_file_path, 'a+') as hook_file:

@@ -1,5 +1,10 @@
 import os
 from datetime import datetime
+from service import find_syslog, Service
+import logging
+from logging.handlers import SysLogHandler
+from apscheduler.schedulers.background import BackgroundScheduler
+import time
 from utils import (
 	decompose_notes_file,
 	decompose_template,
@@ -63,7 +68,6 @@ class Core(object):
 		fresh_text = remove_template_tags(template_text, template_sections)
 
 		# create an archive file with the datetime in the filename
-		print current_file_text
 		archive_file_name = os.path.join(self.directory, datetime.now().strftime(self.default_archive_file_name))
 		with open(archive_file_name, 'w+') as archive_file:
 			write(archive_file, current_file_text)
@@ -104,3 +108,27 @@ class Core(object):
 		file_text = read(self.current_file)
 		file_text = replace_section_text(file_text, section_data, new_section_text)
 		write(self.current_file, file_text)
+
+
+class RotateService(Service):
+	# https://python-service.readthedocs.io/en/stable/
+	def __init__(self, name, core, *args, **kwargs):
+		super(RotateService, self).__init__(name=name, pid_dir=core.directory, *args, **kwargs)
+		self.logger.addHandler(SysLogHandler(address=find_syslog(),
+		                                     facility=SysLogHandler.LOG_DAEMON))
+		self.logger.setLevel(logging.INFO)
+		self.core = core
+
+	def rotate(self):
+		with self.core as core:
+			core.rotate()
+
+	def run(self):
+		sched = BackgroundScheduler()
+		sched.add_job(self.rotate, 'cron', hour=0)
+		sched.start()
+
+		while not self.got_sigterm():
+			time.sleep(1)
+
+		sched.shutdown()

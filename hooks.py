@@ -35,3 +35,7 @@ class Hooks:
 	def post_add_item():
 		return register_hook('hooks:post-add-item')
 
+	@staticmethod
+	def pre_command():
+		return register_hook('hooks:pre-command')
+
