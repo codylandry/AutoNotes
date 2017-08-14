@@ -17,5 +17,8 @@
 ### Changes
 
 
+- [X] C: improved comments
+
+
 ### Defects
 

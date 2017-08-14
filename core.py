@@ -10,11 +10,12 @@ from utils import (
 	read,
 	write
 )
-
-DEFAULT_CURRENT_FILE_NAME = 'today.md'
-DEFAULT_TEMPLATE_FILE_NAME = 'template.md'
-DEFAULT_ARCHIVE_FILE_NAME = "archive-%Y-%m-%d-%H%M.md"
-DEFAULT_COPY_SECTIONS = ('todo', 'notes', 'next')
+from globals import (
+	DEFAULT_CURRENT_FILE_NAME,
+	DEFAULT_TEMPLATE_FILE_NAME,
+	DEFAULT_ARCHIVE_FILE_NAME,
+	DEFAULT_COPY_SECTIONS,
+)
 
 class Core(object):
 	def __init__(self, directory):

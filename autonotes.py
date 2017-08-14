@@ -1,20 +1,16 @@
-from datetime import datetime
 import sys
-import functools
 from utils import *
 from core import Core
 import traceback
-from collections import defaultdict
-TODAY_FILE_NAME = 'today.md'
-TEMPLATE_FILE_NAME = 'template.md'
-ARCHIVE_FILE_NAME_FORMAT = "archive-%Y-%m-%d-%H%M.md"
+from globals import callbacks
 
 @click.group()
 @click.option('--directory',
               default=os.getcwd(),
               type=click.Path(exists=True, dir_okay=True, file_okay=False, resolve_path=True))
+@click.option('--hooks/--no-hooks', 'fire_hooks', default=True, help="Fire/don't fire hook methods")
 @click.pass_context
-def cli(context, directory):
+def cli(context, directory, fire_hooks):
 	"""
 	This script allows you to automatically generate and manage tasks/notes
 
@@ -27,7 +23,7 @@ def cli(context, directory):
 		click.secho('Warning: {} is not initialized, run => autonotes init'.format(directory), fg='red')
 		sys.exit(1)
 
-	context.obj = dict(core=core)
+	context.obj = dict(core=core, fire_hooks=fire_hooks)
 
 @click.command()
 @click.pass_context
@@ -119,49 +115,33 @@ def add_item(ctx, checkbox, checked, section, item_text):
 	with ctx.obj['core'] as core:
 		core.add_item(section, item_text, checkbox=checkbox, checked=checked)
 
-# TODO: codylandry - REFACTOR HOOK API
-
-hook_callbacks = defaultdict(list)
-
 @click.command()
-@click.option('--install', is_flag=True, default=False, help="Install git post-commit hook script")
-@click.option('--trigger', is_flag=True, default=False, help="Fires registered post-commit callbacks")
+@click.option('--install/--uninstall', default=True, help="Install git post-commit hook script")
 @click.pass_context
-def git_hook(ctx, install, trigger):
+def git_hooks(ctx, install):
 	with ctx.obj['core'] as core:
 		# install git pos-commit hook that calls this function with --trigger set
 		if install:
 			install_git_post_commit_hook(core.directory)
 
-		elif trigger:
-			try:
-				# get git repo object to pass to hook
-				git_root = get_git_root_path(os.getcwd())
-				repo = git.Repo(git_root)
+@click.command()
+@click.argument('hook_type')
+@click.option('--context', default='', help="Extra data passed to hook callback function")
+@click.pass_context
+def trigger_hook(ctx, hook_type, context):
+	core = ctx.obj['core']
+	if 'git:' in hook_type:
+		try:
+			# get git repo object to pass to hook
+			git_root = get_git_root_path(os.getcwd())
+			repo = git.Repo(git_root)
+			trigger_hooks(core, hook_type, context=dict(repo=repo, context=context))
+		except:
+			click.secho('{} is not part of a git repo'.format(core.directory))
+		finally:
+			return
 
-				# import hooks, which register themselves on evaluation in hook_callbacks
-				scripts_file_path = os.path.join(core.directory, 'scripts.py')
-				import_(scripts_file_path)
-
-				# call each hook passing the core and repo objects
-				for hook in hook_callbacks['git:post-commit']:
-					try:
-						hook(core, repo)
-					except Exception as e:
-						print traceback.format_exc()
-
-			except ImportError:
-				click.secho('scripts.py not in {}'.format(core.directory))
-				return
-
-def hook(type_):
-	def decorator(method):
-		@functools.wraps(method)
-		def f(*args, **kwargs):
-			method(*args, **kwargs)
-		hook_callbacks[type_].append(f)
-		return f
-	return decorator
+	trigger_hooks(core, hook_type, context=context)
 
 
 cli.add_command(init)
@@ -169,7 +149,5 @@ cli.add_command(create_template)
 cli.add_command(create_today)
 cli.add_command(rotate)
 cli.add_command(add_item)
-cli.add_command(git_hook)
-
-if __name__ == '__main__':
-	cli()
+cli.add_command(git_hooks)
+cli.add_command(trigger_hook)

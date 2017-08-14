@@ -1,4 +1,4 @@
-import os, click, git, re, imp
+import os, click, git, re, imp, traceback
 from collections import OrderedDict
 
 
@@ -168,3 +168,20 @@ def install_git_post_commit_hook(directory):
 
 	click.secho('Git post-commit hook installed for {}'.format(git_root), fg='green')
 
+def trigger_hooks(core, hook_type, context=None):
+	from autonotes import callbacks
+	with core:
+		try:
+			# import hooks, which register themselves on evaluation in hook_callbacks
+			scripts_file_path = os.path.join(core.directory, 'scripts.py')
+			import_(scripts_file_path)
+		except ImportError:
+			click.secho('scripts.py not in {}'.format(core.directory))
+			return
+
+		# call each hook passing the core and context
+		for hook in callbacks[hook_type]:
+			try:
+				hook(core, context)
+			except Exception as e:
+				print traceback.format_exc()

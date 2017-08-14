@@ -1,7 +1,7 @@
-import autonotes
+from hooks import Hooks
 
-@autonotes.hook('git:post-commit')
-def log_commits(core, repo):
+@Hooks.post_git_commit()
+def log_commits(core, context=None):
 	"""
 	This test hook will log commit messages to the appropriate section of the current
 	note file based a flag convention:
@@ -10,6 +10,8 @@ def log_commits(core, repo):
 		C => Change
 		D => Defect fix
 	"""
+	repo = context.get('repo')
+
 	# get the latest commit message
 	latest_commit = next((c.message for c in repo.iter_commits()))
 
